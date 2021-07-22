@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>io.narayana</groupId>
+  <artifactId>lra-annotation-checker-maven-plugin</artifactId>
+  <version>1.0.0.Alpha1-SNAPSHOT</version>
+  <packaging>maven-plugin</packaging>
+  <name>Maven plugin LRA annotation checker</name>
+  <url>https://github.com/jbosstm/incubator</url>
+  <description>maven plugin to check consistency of lra annotations</description>
+
+  <licenses>
+      <license>
+          <name>LGPL 2.1</name>
+          <url>http://www.gnu.org/licenses/lgpl-2.1.html</url>
+      </license>
+  </licenses>
+
+  <developers>
+      <developer>
+          <id>ochaloup</id>
+          <name>Ondra Chaloupka</name>
+          <email>ochaloup@redhat.com</email>
+          <organization>Red Hat</organization>
+          <organizationUrl>https://www.redhat.com</organizationUrl>
+      </developer>
+  </developers>
+
+  <properties>
+    <maven.compiler.source>1.8</maven.compiler.source>
+    <maven.compiler.target>1.8</maven.compiler.target>
+
+    <test.logs.to.file>true</test.logs.to.file>
+    <version.maven.plugin>3.5.2</version.maven.plugin>
+    <version.maven.plugin.annotations>3.5.1</version.maven.plugin.annotations>
+
+    <version.cdi-api>2.0</version.cdi-api>
+    <version.javax.ws.rs-api>2.0.1.Final</version.javax.ws.rs-api>
+    <version.junit>4.13.2</version.junit>
+    <version.microprofile.lra>1.0</version.microprofile.lra>
+    <version.org.jboss.weld>3.0.3.Final</version.org.jboss.weld>
+  </properties>
+
+  <dependencies>
+    <!-- Maven plugin dependencies -->
+    <dependency>
+      <groupId>org.apache.maven</groupId>
+      <artifactId>maven-plugin-api</artifactId>
+      <version>${version.maven.plugin}</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.maven.plugin-tools</groupId>
+      <artifactId>maven-plugin-annotations</artifactId>
+      <version>${version.maven.plugin.annotations}</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.maven</groupId>
+      <artifactId>maven-core</artifactId>
+      <version>${version.maven.plugin}</version>
+      <scope>provided</scope>
+    </dependency>
+
+    <!-- Weld/CDI and Narayana LRA dependencies -->
+    <dependency>
+      <groupId>org.jboss.weld.se</groupId>
+      <artifactId>weld-se-shaded</artifactId>
+      <version>${version.org.jboss.weld}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.eclipse.microprofile.lra</groupId>
+      <artifactId>microprofile-lra-api</artifactId>
+      <version>${version.microprofile.lra}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.jboss.spec.javax.ws.rs</groupId>
+      <artifactId>jboss-jaxrs-api_2.1_spec</artifactId>
+      <version>${version.javax.ws.rs-api}</version>
+    </dependency>
+
+    <!-- Tests -->
+    <dependency>
+      <groupId>junit</groupId>
+      <artifactId>junit</artifactId>
+      <version>${version.junit}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>javax.enterprise</groupId>
+      <artifactId>cdi-api</artifactId>
+      <version>${version.cdi-api}</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <!-- scanning only current project for @Mojo annotations not the whole classpath -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-plugin-plugin</artifactId>
+        <version>3.6.1</version>
+        <configuration>
+          <mojoDependencies>
+            <param>c.c.h:plugin</param>
+          </mojoDependencies>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+
+  <!-- Release with mvn:release -->
+  <distributionManagement>
+      <repository>
+          <id>jboss-releases-repository</id>
+          <name>JBoss Release Repository</name>
+          <url>https://repository.jboss.org/nexus/service/local/staging/deploy/maven2/</url>
+      </repository>
+  </distributionManagement>
+  <scm>
+      <connection>scm:git:https://github.com/jbosstm/narayana-checkstyle-config.git</connection>
+      <url>https://github.com/jbosstm/narayana-checkstyle-config</url>
+      <developerConnection>scm:git:git@github.com:jbosstm/narayana-checkstyle-config.git</developerConnection>
+      <tag>HEAD</tag>
+  </scm>
+</project>
