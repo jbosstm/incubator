@@ -6,3 +6,6 @@ target
 .idea
 jboss-as
 *.swp
+
+release.properties
+pom.xml.releaseBackup
