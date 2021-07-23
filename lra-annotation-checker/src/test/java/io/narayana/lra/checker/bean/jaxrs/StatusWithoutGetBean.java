@@ -20,31 +20,21 @@
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
  */
 
-package io.narayana.lra.checker.bean;
+package io.narayana.lra.checker.bean.jaxrs;
 
-import org.eclipse.microprofile.lra.annotation.Compensate;
-import org.eclipse.microprofile.lra.annotation.Complete;
-import org.eclipse.microprofile.lra.annotation.ws.rs.LRA;
 import org.eclipse.microprofile.lra.annotation.Status;
+import org.eclipse.microprofile.lra.annotation.ws.rs.LRA;
+
+import javax.ws.rs.Path;
+import javax.ws.rs.GET;
 
 /**
- * Bean containing three LRA annotations but they do not contain PATH
- * where JAXRS endpoind is bound at.
+ * {@link Status} JAX-RS definition requires {@link GET}.
  */
 @LRA
-public class AllAnnotationsNoPathBean {
-
-    @Complete
-    public void complete() {
-        // no implementation needed
-    }
-
-    @Compensate
-    public void compensate() {
-        // no implementation needed
-    }
-
+public class StatusWithoutGetBean {
     @Status
+    @Path("status")
     public void status() {
         // no implementation needed
     }

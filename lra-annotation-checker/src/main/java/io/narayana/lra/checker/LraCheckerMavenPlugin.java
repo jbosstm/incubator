@@ -20,7 +20,6 @@
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
  */
 
-
 package io.narayana.lra.checker;
 
 import java.io.File;
@@ -37,6 +36,7 @@ import java.util.logging.Level;
 import java.util.logging.LogManager;
 import java.util.logging.Logger;
 
+import io.narayana.lra.checker.failures.FailureCatalog;
 import org.apache.maven.artifact.DependencyResolutionRequiredException;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
@@ -55,47 +55,47 @@ import io.narayana.lra.checker.cdi.LraAnnotationProcessingExtension;
  * <p>
  * Maven plugin expecting the provided arguments are paths to jar file or directory.<br>
  * It loads all classes (<code>.class</code> files) from the provided paths
- * and checks the LRA annotations if they're correct with use of CDI extension.
+ * and checks the LRA annotations if they're correct.
+ * It uses CDI to verify the annotations.
  * <p>
  * <p>
  * Expected used by adding the snipped similar to this to your <code>pom.xml</code>
- * <pre>
- * &lt;build&gt;
- *   &lt;plugins&gt;
- *     &lt;plugin&gt;
- *       &lt;groupId&gt;io.narayana&lt;/groupId&gt;
- *       &lt;artifactId&gt;lra-annotation-checker-maven-plugin&lt;/artifactId&gt;
- *       &lt;version&gt;1.0.0.Alpha1-SNAPSHOT&lt;/version&gt;
- *       &lt;executions&gt;
- *         &lt;execution&gt;
- *           &lt;goals&gt;
- *             &lt;goal&gt;check&lt;/goal&gt;
- *           &lt;/goals&gt;
- *         &lt;/execution&gt;
- *       &lt;/executions&gt;
- *     &lt;/plugin&gt;
- *   &lt;/plugins&gt;
- * &lt;/build&gt;
- * </pre>
+ * <pre>{@code
+ * <build>
+ *   <plugins>
+ *     <plugin>
+ *       <groupId>io.narayana</groupId>
+ *       <artifactId>maven-plugin-lra-annotations_1.0</artifactId>
+ *       <version>1.0.0</version>
+ *       <executions>
+ *         <execution>
+ *           <goals>
+ *             <goal>check</goal>
+ *           </goals>
+ *         </execution>
+ *       </executions>
+ *     </plugin>
+ *   </plugins>
+ * </build>
+ * }</pre>
  * <p>
- * For configuration you can use parameters to configure
+ * Parameters to configure
  * <ul>
- *   <li><code>paths</code> - path searched for classes which will be checked on LRA annotations (use directory or jar)</li>
- *   <li><code>failWhenPathNotExist</code> - define if fails when some of the <code>paths</code> param is non-existing path</li>
+ *   <li>{@code paths} - path searched for classes which will be checked on LRA annotations (use directory or jar)</li>
+ *   <li>{@code failWhenPathNotExist} - define if fails when some of the {@code paths} param is non-existing path</li>
  * </ul>
- * <pre>
- * &lt;plugin&gt;
+ * <pre>{@code
+ * <plugin>
  *   ...
- *   &lt;configuration&gt;
- *     &lt;failWhenPathNotExist&gt;false&lt;/failWhenPathNotExist&gt;
- *     &lt;paths&gt;
- *       &lt;param&gt;${project.build.directory}/classes&lt;/param&gt;
- *     &lt;/paths&gt;
- *   &lt;/configuration&gt;
+ *   <configuration>
+ *     <failWhenPathNotExist>false</failWhenPathNotExist>
+ *     <paths>
+ *       <param>${project.build.directory}/classes</param>
+ *     </paths>
+ *   </configuration>
  *   ...
- * &lt;/plugin&gt;
- *
- * @author Ondra Chaloupka <ochaloup@redhat.com>
+ * </plugin>
+ * }</pre>
  */
 @Mojo(name = "check", defaultPhase = LifecyclePhase.PROCESS_CLASSES, requiresDependencyResolution = ResolutionScope.COMPILE)
 public class LraCheckerMavenPlugin extends AbstractMojo {
@@ -123,7 +123,7 @@ public class LraCheckerMavenPlugin extends AbstractMojo {
 
     @Override
     public void execute() throws MojoExecutionException, MojoFailureException {
-        // do not show weld info log messages
+        // do not show Weld info log messages
         if (!getLog().isDebugEnabled()) {
             LogManager lm = LogManager.getLogManager();
             Logger archiveDeployerLogger = Logger.getLogger("org.jboss.weld");
@@ -144,7 +144,7 @@ public class LraCheckerMavenPlugin extends AbstractMojo {
         // filtering out paths that does not exist
         if (!failWhenPathNotExist) {
             preprocessedPaths =
-                Arrays.asList(paths).stream().filter(path -> new File(path).exists()).toArray(String[]::new);
+                Arrays.stream(paths).filter(path -> new File(path).exists()).toArray(String[]::new);
             if (preprocessedPaths.length <= 0) {
                 getLog().warn("No provided parameter as path for checking for LRA classes '" +
                     Arrays.asList(paths) + "' does exist");
@@ -152,7 +152,7 @@ public class LraCheckerMavenPlugin extends AbstractMojo {
             }
         }
 
-        CheckerUtil.setMavenLog(getLog());
+        ClassAndFilesProcessing checkerUtil = new ClassAndFilesProcessing(getLog());
         getLog().info("Loading classes from paths: " + Arrays.asList(preprocessedPaths));
 
         // say if path is directory or jar file
@@ -167,43 +167,42 @@ public class LraCheckerMavenPlugin extends AbstractMojo {
             switch (argEntry.getValue()) {
                 case DIRECTORY:
                     clazzNames.addAll(
-                            CheckerUtil.loadFromDir(argEntry.getKey(), classLoader));
+                            checkerUtil.loadFromDir(argEntry.getKey(), classLoader));
                     break;
                 case JAR:
                     clazzNames.addAll(
-                            CheckerUtil.loadFromJar(argEntry.getKey(), classLoader));
+                            checkerUtil.loadFromJar(argEntry.getKey(), classLoader));
                     break;
                 default:
                     break;
             }
         }
 
-        // weld extension checking the LRA annotation to go
+        // Weld extension checking the LRA annotation to go
         @SuppressWarnings("unchecked")
         Weld weld = new Weld()
             .disableDiscovery()
             .addExtensions(LraAnnotationProcessingExtension.class)
             .setClassLoader(classLoader)
-            .addBeanClasses(clazzNames.toArray(new Class[clazzNames.size()]));
+            .addBeanClasses(clazzNames.toArray(new Class[]{}));
 
         try (WeldContainer container = weld.initialize()) {
-            // weld intializes and works with extensions here
-        } catch (org.jboss.weld.exceptions.DeploymentException ignore) {
+            // Weld initializes and works with extensions here
+        } catch (org.jboss.weld.exceptions.DeploymentException deploymentException) {
             if (!getLog().isDebugEnabled()) {
                 getLog().debug("Error on Weld init happened but we are ignoring"
-                        + "it as we care about LRA annotation and not about deploying", ignore);
+                        + "it as we care about LRA annotation and not about deploying", deploymentException);
             }
-        } finally {
-            if (!FailureCatalog.INSTANCE.isEmpty()) {
-                throw new MojoFailureException(
-                    String.format("LRA annotation errors:%n%s", FailureCatalog.INSTANCE.formatCatalogContent()));
-            }
+        }
+        if (!FailureCatalog.INSTANCE.isEmpty()) {
+            throw new MojoFailureException(
+                String.format("LRA annotation errors:%n%s", FailureCatalog.INSTANCE.formatCatalogContent()));
         }
     }
 
-    private Map<File, FileType> classifyPaths(String[] pathsToClasify) throws MojoFailureException {
+    private Map<File, FileType> classifyPaths(String[] pathsToClassify) throws MojoFailureException {
         Map<File, FileType> pathsFileMap = new HashMap<>();
-        for (String arg: pathsToClasify) {
+        for (String arg: pathsToClassify) {
             File file = new File(arg);
             if (!file.exists()) {
                 throw new IllegalArgumentException("Provided argument '" + arg + "' is not an existing file");
@@ -211,7 +210,7 @@ public class LraCheckerMavenPlugin extends AbstractMojo {
 
             if (file.isDirectory()) {
                 pathsFileMap.put(file, FileType.DIRECTORY);
-            } else if (CheckerUtil.isZipFile(file)) {
+            } else if (ClassAndFilesProcessing.isZipFile(file)) {
                 pathsFileMap.put(file, FileType.JAR);
             } else {
                 throw new MojoFailureException("Provided path '" + arg + "' is neither directory nor jar file");
@@ -236,7 +235,7 @@ public class LraCheckerMavenPlugin extends AbstractMojo {
                 pathUrls.add(new File(mavenCompilePath).toURI().toURL());
             }
 
-            URL[] urlsForClassLoader = pathUrls.toArray(new URL[pathUrls.size()]);
+            URL[] urlsForClassLoader = pathUrls.toArray(new URL[]{});
             getLog().debug("urls for URLClassLoader: " + Arrays.asList(urlsForClassLoader));
 
             // need to define parent classloader which knows all dependencies of the plugin (e.g. LRA annotations)

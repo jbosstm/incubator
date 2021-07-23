@@ -1,40 +1,12 @@
-= LRA annotation checker Maven plugin
+= Narayana LRA annotation checker: Maven plugin
 
-The purpose of this Maven plugin is to provide verification of correct
-usage of LRA annotation used in the project.
-Plugin scans LRA annotation on your project and highlights the usage
-which contradicts to LRA specification
-https://github.com/eclipse/microprofile-sandbox/tree/master/proposals/0009-LRA
+Maven plugin providing build time verification of LRA annotations.
 
+The plugin searches the LRA annotations in your project during *_build time_*,
+and highlights the rules that contradicts with the LRA specification of version `1.0`:
+https://github.com/eclipse/microprofile-lra/blob/1.0/spec/src/main/asciidoc/microprofile-lra-spec.adoc
 
-== Motivation: why to use this in your project
-
-Let's introduces few inaccuracies this plugin can help to discover
-
-* you use annotation `@Compensate` but forget to provide the complementary
-  `@Path` annotation declaring the JAX-RS endpoint to contact when the LRA fails
-* you defines the endpoint with LRA annotation `@Forget` defines with `@Path`
-  to be called by LRA coordinator when it's not needed to store the state
-  for case of compensation. But you forget that the endpoint will be called
-  with HTTP `DELETE` and the `@DELETE` JAX-RS annotation misses at the method
-* ...
-
-
-== How to use
-
-The plugin defines goal `check`, by default it's run at phase `process-classes`.
-
-Plugin parameters are
-
-`paths`::
-  list of file system paths to be scanned for classes using LRA annotations. If exists the provided path
-  has to be either pointing to a directory or to a jar file. If not provided the value default value
-  is path to `target/classes` (a.k.a `${project.build.directory}`).
-`failWhenPathNotExist`::
-  define if plugin fails (throws exception) when some of the provided `paths` param is an non-existing path.
-  expected value is boolean `true` or `false`. The default value is `true`.
-
-=== Usage example
+== Usage
 
 Add the following to your project `pom.xml`
 
@@ -43,8 +15,8 @@ Add the following to your project `pom.xml`
   <plugins>
     <plugin>
       <groupId>io.narayana</groupId>
-      <artifactId>lra-annotation-checker-maven-plugin</artifactId>
-      <version>1.0.0.Alpha1-SNAPSHOT</version>
+      <artifactId>maven-plugin-lra-annotations_1.0</artifactId>
+      <version>1.0.0</version>
       <executions>
         <execution>
           <goals>
@@ -56,6 +28,51 @@ Add the following to your project `pom.xml`
   </plugins>
 </build>
 ```
+
+=== Configuration
+
+The plugin defines the goal `check`, by default it's run at phase `process-classes`.
+
+.Plugin parameters
+|====
+|Parameter name |Description
+
+|`paths`
+|Defines the list of file system paths that will be scanned by plugin.
+ The provided path (if exists) has to be pointing to a directory or to a jar file.
+ The default value is path to `target/classes` (a.k.a. `${project.build.directory}`).
+|`failWhenPathNotExist`
+|Defines if plugin fails (throws exception) when some provided `paths` param
+ does not exist. It's a boolean value `true` or `false`. The default value is `true`.
+|====
+
+
+== Plugin processing
+
+The plugin verifies if the following is valid in the project
+
+* https://github.com/eclipse/microprofile-lra/blob/master/api/src/main/java/org/eclipse/microprofile/lra/annotation/ws/rs/LRA.java#L46[`@LRA` annotation]
+ has to be accompanied with one or both annotations `@Compensate` or `@AfterLRA`
+* annotations used for non-JAX-RS resources have to be with a valid method signature
+** method is `public`
+** return type is `void`, `CompletionStage`, `LRAStatus` or `Response`
+** there is defined specified parameters which is `(java.net.URI)` or `(java.net.URI, java.net.URI)`
+   for most of the annotations, or `(java.net.URI, LRAStatus)` for `AfterLRA`
+* JAX-RS resources need to be accompanied with JAX-RS `@Path` annotation
+  and one particular HTTP method is required
++
+|====
+|Annotation name |Required HTTP method
+|`@Complete` | `@PUT`
+|`@Compensate` | `@PUT`
+|`@AfterLRA` | `@PUT`
+|`@Leave` | `@PUT`
+|`@Status` | `@GET`
+|`@Forget` | `@DELETE`
+|====
++
+* Only one LRA annotation of one type is permitted in one class
+  (i.e., for example the class cannot be defined with two `@Complete` annotations)
 
 == How to build
 
@@ -92,4 +109,3 @@ http://maven.apache.org/maven-release/maven-release-plugin/usage.html[steps for 
 * `mvn release:perform`
 
 Dry run: `mvn release:prepare -DdryRun=true`
-

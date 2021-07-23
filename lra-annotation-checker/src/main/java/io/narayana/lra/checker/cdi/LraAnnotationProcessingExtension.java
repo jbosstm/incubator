@@ -22,215 +22,212 @@
 
 package io.narayana.lra.checker.cdi;
 
-import java.lang.annotation.Annotation;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.function.BiFunction;
-import java.util.function.Function;
-import java.util.function.Supplier;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
+import io.narayana.lra.checker.common.Tuple;
+import io.narayana.lra.checker.failures.ErrorCode;
+import io.narayana.lra.checker.failures.ErrorDetailsPrinter;
+import io.narayana.lra.checker.failures.FailureCatalog;
+import jakarta.enterprise.event.Observes;
+import jakarta.enterprise.inject.spi.AnnotatedMethod;
+import jakarta.enterprise.inject.spi.Extension;
+import jakarta.enterprise.inject.spi.ProcessAnnotatedType;
+import org.eclipse.microprofile.lra.annotation.AfterLRA;
+import org.eclipse.microprofile.lra.annotation.Compensate;
+import org.eclipse.microprofile.lra.annotation.Complete;
+import org.eclipse.microprofile.lra.annotation.Forget;
+import org.eclipse.microprofile.lra.annotation.LRAStatus;
+import org.eclipse.microprofile.lra.annotation.ParticipantStatus;
+import org.eclipse.microprofile.lra.annotation.Status;
+import org.eclipse.microprofile.lra.annotation.ws.rs.Leave;
+import org.jboss.logging.Logger;
+import org.jboss.weld.util.collections.Sets;
 
-import javax.enterprise.event.Observes;
-import javax.enterprise.inject.spi.AnnotatedMethod;
-import javax.enterprise.inject.spi.Extension;
-import javax.enterprise.inject.spi.ProcessAnnotatedType;
-import javax.enterprise.inject.spi.WithAnnotations;
 import javax.ws.rs.DELETE;
 import javax.ws.rs.GET;
 import javax.ws.rs.PUT;
 import javax.ws.rs.Path;
 import javax.ws.rs.container.Suspended;
+import javax.ws.rs.core.Response;
+import java.lang.annotation.Annotation;
+import java.lang.reflect.Modifier;
+import java.net.URI;
+import java.util.Set;
+import java.util.concurrent.CompletionStage;
+import java.util.function.Predicate;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
-import io.narayana.lra.checker.FailureCatalog;
-import org.eclipse.microprofile.lra.annotation.Compensate;
-import org.eclipse.microprofile.lra.annotation.Complete;
-import org.eclipse.microprofile.lra.annotation.Forget;
-import org.eclipse.microprofile.lra.annotation.ws.rs.LRA;
-import org.eclipse.microprofile.lra.annotation.ws.rs.Leave;
-import org.eclipse.microprofile.lra.annotation.Status;
-
+import static io.narayana.lra.checker.cdi.LraAnnotationMetadata.LRA_METHOD_ANNOTATIONS;
 
 /**
  * <p>
- * CDI extension working in concord of LRA filters.
+ * This is the annotation processing class in plugin.
+ * It's written as a CDI extension that gets all LRA annotations within the project
+ * and checks whether they break the rules of LRA specification.
+ * </p>
  * <p>
- * When added at the class path of the project this extension validates
- * if the classes contain compulsory annotation complementary to {@link LRA}.
- * The rules of what are compulsory annotations and their attributes
- * are defined in LRA specification.
- * <p>
- * Failures are gathered under the list of failures in {@link FailureCatalog}.
- *
- * @author Ondra Chaloupka <ochaloup@redhat.com>
+ * All failures are stored under {@link FailureCatalog}.
+ * </p>
  */
 public class LraAnnotationProcessingExtension implements Extension {
+    private static final Logger log = Logger.getLogger(LraAnnotationProcessingExtension.class);
 
-    <X> void processLraAnnotatedType(@Observes @WithAnnotations({LRA.class}) ProcessAnnotatedType<X> classAnnotatedWithLra) {
+    <X> void processLraAnnotatedType(@Observes ProcessAnnotatedType<X> cdiAnnotatedType) {
+        log.debugf("Processing class:", cdiAnnotatedType);
 
-        // All compulsory LRA annotations are available at the class
-        Supplier<Stream<AnnotatedMethod<? super X>>> sup = () -> classAnnotatedWithLra.getAnnotatedType().getMethods().stream();
-        Set<Class<? extends Annotation>> missing = new HashSet<>();
-        if (!sup.get().anyMatch(m -> m.isAnnotationPresent(Compensate.class))) {
-            missing.add(Compensate.class);
-        }
-
-        // gathering all LRA annotations in the class
-        List<LRA> lraAnnotations = new ArrayList<>();
-        LRA classLraAnnotation = classAnnotatedWithLra.getAnnotatedType().getAnnotation(LRA.class);
-        if (classLraAnnotation != null) {
-            lraAnnotations.add(classLraAnnotation);
-        }
-        List<LRA> methodlraAnnotations = sup.get()
-                .filter(m -> m.isAnnotationPresent(LRA.class))
-                .map(m -> m.getAnnotation(LRA.class))
-                .collect(Collectors.toList());
-        lraAnnotations.addAll(methodlraAnnotations);
-
-        // when LRA annotations expect no context then they are not part of the LRA and no handling
-        // of the completion or compensation is needed
-        boolean isNoLRAContext = lraAnnotations.stream().allMatch(
-                lraAnn -> (lraAnn.value() == LRA.Type.NEVER || lraAnn.value() == LRA.Type.NOT_SUPPORTED));
-        if (isNoLRAContext) {
+        // LRA works only with instantiable classes - no abstract, no interface
+        Class<X> classAnnotated = cdiAnnotatedType.getAnnotatedType().getJavaClass();
+        if (classAnnotated.isAnnotation() || classAnnotated.isEnum() || classAnnotated.isInterface() || Modifier.isAbstract(classAnnotated.getModifiers())) {
+            log.debugf("Skipping class: %s as it's not standard instantiable class", cdiAnnotatedType);
             return;
         }
 
-        final String classAnnotatedWithLraName = classAnnotatedWithLra.getAnnotatedType().getJavaClass().getName();
-        if (!missing.isEmpty()) {
-            FailureCatalog.INSTANCE.add("Class " + classAnnotatedWithLraName + " uses "
-                + LRA.class.getName() + " which requires methods handling LRA events. Missing annotations in the class: " + missing);
+        // Processing through the class and collecting data of LRA annotations
+        LraAnnotationMetadata<X> metadata = LraAnnotationMetadata.loadMetadata(cdiAnnotatedType.getAnnotatedType());
+
+        // Verify if the type is annotated with @LRA and contains some LRA callback annotations
+        //   the only exception is @AfterLRA which is considered for being defined without @LRA in the class
+        if (metadata.getLRAAnnotated().isEmpty() && metadata.containsAnLRAMethodCallbackAnnotation(AfterLRA.class)) {
+            FailureCatalog.INSTANCE.add(ErrorCode.NO_LRA, "Type: " + classAnnotated);
+        }
+        if (metadata.getLRAAnnotated().isEmpty()) {
+            log.debugf("Not an LRA type: " + classAnnotated);
+            return;
         }
 
-        // Only one of each LRA annotation is placed in the class
-        List<AnnotatedMethod<? super X>> methodsWithCompensate = sup.get()
-            .filter(m -> m.isAnnotationPresent(Compensate.class))
-            .collect(Collectors.toList());
-        List<AnnotatedMethod<? super X>> methodsWithComplete = sup.get()
-            .filter(m -> m.isAnnotationPresent(Complete.class))
-            .collect(Collectors.toList());
-        List<AnnotatedMethod<? super X>> methodsWithStatus = sup.get()
-            .filter(m -> m.isAnnotationPresent(Status.class))
-            .collect(Collectors.toList());
-        List<AnnotatedMethod<? super X>> methodsWithLeave = sup.get()
-            .filter(m -> m.isAnnotationPresent(Leave.class))
-            .collect(Collectors.toList());
-        List<AnnotatedMethod<? super X>> methodsWithForget = sup.get()
-            .filter(m -> m.isAnnotationPresent(Forget.class))
-            .collect(Collectors.toList());
-
-        BiFunction<Class<?>, List<AnnotatedMethod<? super X>>, String> errorMsg = (clazz, methods) -> String.format(
-            "There are used multiple annotations '%s' in the class '%s' on methods %s. Only one per the class is expected.",
-            clazz.getName(), classAnnotatedWithLraName,
-            methods.stream().map(a -> a.getJavaMember().getName()).collect(Collectors.toList()));
-        if (methodsWithCompensate.size() > 1) {
-            FailureCatalog.INSTANCE.add(errorMsg.apply(Compensate.class, methodsWithCompensate));
-        }
-        if (methodsWithComplete.size() > 1) {
-            FailureCatalog.INSTANCE.add(errorMsg.apply(Complete.class, methodsWithComplete));
-        }
-        if (methodsWithStatus.size() > 1) {
-            FailureCatalog.INSTANCE.add(errorMsg.apply(Status.class, methodsWithStatus));
-        }
-        if (methodsWithLeave.size() > 1) {
-            FailureCatalog.INSTANCE.add(errorMsg.apply(Leave.class, methodsWithLeave));
-        }
-        if (methodsWithForget.size() > 1) {
-            FailureCatalog.INSTANCE.add(errorMsg.apply(Forget.class, methodsWithForget));
+        // LRA type has to contain @Compensate or @AfterLRA
+        if (metadata.getAnnotatedMethods(Compensate.class).isEmpty() && metadata.getAnnotatedMethods(AfterLRA.class).isEmpty()) {
+            FailureCatalog.INSTANCE.add(ErrorCode.MISSING_ANNOTATIONS_COMPENSATE_AFTER_LRA,
+                    "Class: " + classAnnotated.getName());
         }
 
-        if (methodsWithCompensate.size() > 0) {
-            // Each method annotated with LRA-style annotations contain all necessary REST annotations
-            // @Compensate - requires @Path and @PUT
-            final AnnotatedMethod<? super X> methodWithCompensate = methodsWithCompensate.get(0);
-            Function<Class<?>, String> getCompensateMissingErrMsg = (wrongAnnotation) ->
-                getMissingAnnotationError(methodWithCompensate, classAnnotatedWithLra, Compensate.class, wrongAnnotation);
-            boolean isCompensateContainsPathAnnotation = methodWithCompensate.getAnnotations().stream().anyMatch(a -> a.annotationType().equals(Path.class));
-            if (!isCompensateContainsPathAnnotation) {
-                FailureCatalog.INSTANCE.add(getCompensateMissingErrMsg.apply(Path.class));
-            }
-            boolean isCompensateContainsPutAnnotation = methodWithCompensate.getAnnotations().stream().anyMatch(a -> a.annotationType().equals(PUT.class));
-            if (!isCompensateContainsPutAnnotation) {
-                FailureCatalog.INSTANCE.add(getCompensateMissingErrMsg.apply(PUT.class));
-            }
-            boolean isCompensateParametersContainsSuspended = methodWithCompensate.getParameters().stream().flatMap(p -> p.getAnnotations().stream())
-                    .anyMatch(a -> a.annotationType().equals(Suspended.class));
-            if (isCompensateParametersContainsSuspended) {
-                if (methodsWithStatus.size() == 0 || methodsWithForget.size() == 0) {
-                    FailureCatalog.INSTANCE.add(getMissingAnnotationsForAsynchHandling(methodWithCompensate, classAnnotatedWithLra, Compensate.class));
-                }
-            }
-        }
+        // Only one LRA annotation is permitted per class
+        LRA_METHOD_ANNOTATIONS.stream()
+                // @Status and @Leave could be (maybe) used multiple times within one class (spec says nothing in particular)
+                .filter(clazz -> clazz == clazz )
+                .map(lraAnnotation -> Tuple.of(lraAnnotation, metadata.getAnnotatedMethodsFilteredToMostConcrete(lraAnnotation)))
+                .filter(t -> t.getValue().size() > 1) // multiple methods for the annotation was found
+                .forEach(t -> FailureCatalog.INSTANCE.add(ErrorCode.MULTIPLE_ANNOTATIONS_OF_THE_SAME_TYPE,
+                        ErrorDetailsPrinter.MULTIPLE_ANNOTATIONS.apply(classAnnotated).apply(t.getKey(), t.getValue())));
 
-        if (methodsWithComplete.size() > 0) {
-            // @Complete - requires @Path and @PUT
-            final AnnotatedMethod<? super X> methodWithComplete = methodsWithComplete.get(0);
-            Function<Class<?>, String> getCompleteMissingErrMsg = (wrongAnnotation) ->
-                getMissingAnnotationError(methodWithComplete, classAnnotatedWithLra, Complete.class, wrongAnnotation);
-            boolean isCompleteContainsPathAnnotation = methodWithComplete.getAnnotations().stream().anyMatch(a -> a.annotationType().equals(Path.class));
-            if (!isCompleteContainsPathAnnotation) {
-                FailureCatalog.INSTANCE.add(getCompleteMissingErrMsg.apply(Path.class));
-            }
-            boolean isCompleteContainsPutAnnotation = methodWithComplete.getAnnotations().stream().anyMatch(a -> a.annotationType().equals(PUT.class));
-            if (!isCompleteContainsPutAnnotation) {
-                FailureCatalog.INSTANCE.add(getCompleteMissingErrMsg.apply(PUT.class));
-            }
-            boolean isCompleteParametersContainsSuspended = methodWithComplete.getParameters().stream().flatMap(p -> p.getAnnotations().stream())
-                    .anyMatch(a -> a.annotationType().equals(Suspended.class));
-            if (isCompleteParametersContainsSuspended) {
-                if (methodsWithStatus.size() == 0 || methodsWithForget.size() == 0) {
-                    FailureCatalog.INSTANCE.add(getMissingAnnotationsForAsynchHandling(methodWithComplete, classAnnotatedWithLra, Complete.class));
-                }
-            }
-        }
+        // Multiple different LRA annotations does not make sense at the same method
+        Set<Set<Class<? extends Annotation>>> lraAnnotationsCombination = LRA_METHOD_ANNOTATIONS.stream()
+                .flatMap(oneLraAnnotation -> LRA_METHOD_ANNOTATIONS.stream() // generating any combination of two different LRA annotations
+                        .flatMap(lraAnnotation2 -> Stream.of(Sets.newHashSet(oneLraAnnotation, lraAnnotation2))))
+                .filter(s -> s.size() == 2) // filtering a set of one member, get rid of combinations of two same annotations
+                .collect(Collectors.toSet());
+        // processing all active methods and marking wrong any annotated with the combination of any two LRA annotations
+        cdiAnnotatedType.getAnnotatedType().getMethods().stream().filter(method -> lraAnnotationsCombination.stream()
+                .anyMatch(annotationSet -> annotationSet.stream().allMatch(method::isAnnotationPresent)))
+                .forEach(method -> FailureCatalog.INSTANCE.add(ErrorCode.MULTIPLE_ANNOTATIONS_OF_VARIOUS_TYPES,
+                        ErrorDetailsPrinter.METHOD_INFO.apply(method)));
 
-        if (methodsWithStatus.size() > 0) {
-            // @Status - requires @Path and @GET
-            final AnnotatedMethod<? super X> methodWithStatus = methodsWithStatus.get(0);
-            Function<Class<?>, String> getStatusMissingErrMsg = (wrongAnnotation) ->
-                getMissingAnnotationError(methodWithStatus, classAnnotatedWithLra, Status.class, wrongAnnotation);
-            boolean isStatusContainsPathAnnotation = methodWithStatus.getAnnotations().stream().anyMatch(a -> a.annotationType().equals(Path.class));
-            if (!isStatusContainsPathAnnotation) {
-                FailureCatalog.INSTANCE.add(getStatusMissingErrMsg.apply(Path.class));
-            }
-            boolean isStatusContainsGetAnnotation = methodWithStatus.getAnnotations().stream().anyMatch(a -> a.annotationType().equals(GET.class));
-            if (!isStatusContainsGetAnnotation) {
-                FailureCatalog.INSTANCE.add(getStatusMissingErrMsg.apply(GET.class));
-            }
-        }
+        // -------------------------------------------------------------------------------------------
+        // non-JAX-RS (CDI) style methods does not require @Path/@<method> but requires particular method signature
+        metadata.getAnnotatedMostConcreteNonJaxRsMethods(Compensate.class).stream()
+                // method signature for @Compensate: public void/CompleteStage compensate(URI lraId, URI parentId) { ...}
+                .filter(LraAnnotationProcessingExtension.methodSignatureChecker(URI.class, URI.class))
+                .forEach(method -> FailureCatalog.INSTANCE.add(ErrorCode.WRONG_METHOD_SIGNATURE_NON_JAXRS_RESOURCE,
+                        ErrorDetailsPrinter.NON_JAXRS_SIGNATURE.apply(method, Compensate.class)));
+        metadata.getAnnotatedMostConcreteNonJaxRsMethods(Complete.class).stream()
+                .filter(LraAnnotationProcessingExtension.methodSignatureChecker(URI.class, URI.class))
+                .forEach(method -> FailureCatalog.INSTANCE.add(ErrorCode.WRONG_METHOD_SIGNATURE_NON_JAXRS_RESOURCE,
+                        ErrorDetailsPrinter.NON_JAXRS_SIGNATURE.apply(method, Complete.class)));
+        metadata.getAnnotatedMostConcreteNonJaxRsMethods(Status.class).stream()
+                .filter(LraAnnotationProcessingExtension.methodSignatureChecker(URI.class, URI.class))
+                .forEach(method -> FailureCatalog.INSTANCE.add(ErrorCode.WRONG_METHOD_SIGNATURE_NON_JAXRS_RESOURCE,
+                        ErrorDetailsPrinter.NON_JAXRS_SIGNATURE.apply(method, Status.class)));
+        metadata.getAnnotatedMostConcreteNonJaxRsMethods(AfterLRA.class).stream()
+                .filter(LraAnnotationProcessingExtension.methodSignatureChecker(URI.class, LRAStatus.class))
+                .forEach(method -> FailureCatalog.INSTANCE.add(ErrorCode.WRONG_METHOD_SIGNATURE_NON_JAXRS_RESOURCE,
+                        ErrorDetailsPrinter.NON_JAXRS_SIGNATURE.apply(method, AfterLRA.class)));
+        metadata.getAnnotatedMostConcreteNonJaxRsMethods(Forget.class).stream()
+                .filter(LraAnnotationProcessingExtension.methodSignatureChecker(URI.class, URI.class))
+                .forEach(method -> FailureCatalog.INSTANCE.add(ErrorCode.WRONG_METHOD_SIGNATURE_NON_JAXRS_RESOURCE,
+                        ErrorDetailsPrinter.NON_JAXRS_SIGNATURE.apply(method, Forget.class)));
 
-        if (methodsWithLeave.size() > 0) {
-            // @Leave - requires @PUT
-            final AnnotatedMethod<? super X> methodWithLeave = methodsWithLeave.get(0);
-            boolean isLeaveContainsPutAnnotation = methodWithLeave.getAnnotations().stream().anyMatch(a -> a.annotationType().equals(PUT.class));
-            if (!isLeaveContainsPutAnnotation) {
-                FailureCatalog.INSTANCE.add(getMissingAnnotationError(methodWithLeave, classAnnotatedWithLra, Leave.class, PUT.class));
-            }
+        // --------------------------------------------------------------------------------------------
+        // REST style methods requires all necessary REST annotations
+        // @Compensate - requires @Path and @PUT
+        metadata.getAnnotatedMostConcreteJaxRsMethodsWithoutCompound(Compensate.class, Path.class)
+                .forEach(method -> FailureCatalog.INSTANCE.add(ErrorCode.WRONG_JAXRS_COMPLEMENTARY_ANNOTATION,
+                    ErrorDetailsPrinter.MISSING_JAXRS.apply(method).apply(Compensate.class, Path.class)));
+        metadata.getAnnotatedMostConcreteJaxRsMethodsWithoutCompound(Compensate.class, PUT.class)
+                .forEach(method -> FailureCatalog.INSTANCE.add(ErrorCode.WRONG_JAXRS_COMPLEMENTARY_ANNOTATION,
+                    ErrorDetailsPrinter.MISSING_JAXRS.apply(method).apply(Compensate.class, PUT.class)));
+        // @Complete - requires @Path and @PUT
+        metadata.getAnnotatedMostConcreteJaxRsMethodsWithoutCompound(Complete.class, Path.class)
+                .forEach(method -> FailureCatalog.INSTANCE.add(ErrorCode.WRONG_JAXRS_COMPLEMENTARY_ANNOTATION,
+                        ErrorDetailsPrinter.MISSING_JAXRS.apply(method).apply(Complete.class, Path.class)));
+        metadata.getAnnotatedMostConcreteJaxRsMethodsWithoutCompound(Complete.class, PUT.class)
+                .forEach(method -> FailureCatalog.INSTANCE.add(ErrorCode.WRONG_JAXRS_COMPLEMENTARY_ANNOTATION,
+                        ErrorDetailsPrinter.MISSING_JAXRS.apply(method).apply(Complete.class, PUT.class)));
+        // @Status or @Forget is not defined, let's verify if @Suspend is used for complete and compensate
+        if (metadata.getAnnotatedMethods(Status.class).isEmpty() || metadata.getAnnotatedMethods(Forget.class).isEmpty()) {
+            checkSuspendedAsync(metadata, Compensate.class);
+            checkSuspendedAsync(metadata, Complete.class);
         }
-
-        if (methodsWithForget.size() > 0) {
-            // @Forget - requires @DELETE
-            final AnnotatedMethod<? super X> methodWithForget = methodsWithForget.get(0);
-            boolean isForgetContainsPutAnnotation = methodWithForget.getAnnotations().stream().anyMatch(a -> a.annotationType().equals(DELETE.class));
-            if (!isForgetContainsPutAnnotation) {
-                FailureCatalog.INSTANCE.add(getMissingAnnotationError(methodWithForget, classAnnotatedWithLra, Forget.class, DELETE.class));
-            }
-        }
+        // @AfterLRA - requires @Path and @PUT
+        metadata.getAnnotatedMostConcreteJaxRsMethodsWithoutCompound(AfterLRA.class, Path.class)
+                .forEach(method -> FailureCatalog.INSTANCE.add(ErrorCode.WRONG_JAXRS_COMPLEMENTARY_ANNOTATION,
+                        ErrorDetailsPrinter.MISSING_JAXRS.apply(method).apply(AfterLRA.class, Path.class)));
+        metadata.getAnnotatedMostConcreteJaxRsMethodsWithoutCompound(AfterLRA.class, PUT.class)
+                .forEach(method -> FailureCatalog.INSTANCE.add(ErrorCode.WRONG_JAXRS_COMPLEMENTARY_ANNOTATION,
+                        ErrorDetailsPrinter.MISSING_JAXRS.apply(method).apply(AfterLRA.class, PUT.class)));
+        // @Status - requires @Path and @GET
+        metadata.getAnnotatedMostConcreteJaxRsMethodsWithoutCompound(Status.class, Path.class)
+                .forEach(method -> FailureCatalog.INSTANCE.add(ErrorCode.WRONG_JAXRS_COMPLEMENTARY_ANNOTATION,
+                        ErrorDetailsPrinter.MISSING_JAXRS.apply(method).apply(Status.class, Path.class)));
+        metadata.getAnnotatedMostConcreteJaxRsMethodsWithoutCompound(Status.class, GET.class)
+                .forEach(method -> FailureCatalog.INSTANCE.add(ErrorCode.WRONG_JAXRS_COMPLEMENTARY_ANNOTATION,
+                        ErrorDetailsPrinter.MISSING_JAXRS.apply(method).apply(Status.class, GET.class)));
+        // @Leave - requires @PUT
+        metadata.getAnnotatedMostConcreteJaxRsMethodsWithoutCompound(Leave.class, PUT.class)
+                .forEach(method -> FailureCatalog.INSTANCE.add(ErrorCode.WRONG_JAXRS_COMPLEMENTARY_ANNOTATION,
+                        ErrorDetailsPrinter.MISSING_JAXRS.apply(method).apply(Leave.class, PUT.class)));
+        // @Forget - requires @DELETE
+        metadata.getAnnotatedMostConcreteJaxRsMethodsWithoutCompound(Forget.class, DELETE.class)
+                .forEach(method -> FailureCatalog.INSTANCE.add(ErrorCode.WRONG_JAXRS_COMPLEMENTARY_ANNOTATION,
+                        ErrorDetailsPrinter.MISSING_JAXRS.apply(method).apply(Forget.class, DELETE.class)));
     }
 
-    private String getMissingAnnotationError(AnnotatedMethod<?> method, ProcessAnnotatedType<?> classAnnotated,
-        Class<?> lraTypeAnnotation, Class<?> complementaryAnnotation) {
-        return String.format("Method '%s' of class '%s' annotated with '%s' should use complementary annotation %s",
-            method.getJavaMember().getName(), classAnnotated.getAnnotatedType().getJavaClass().getName(),
-            lraTypeAnnotation.getName(), complementaryAnnotation.getName());
+    private <X> void checkSuspendedAsync(LraAnnotationMetadata<X> metadata, Class<? extends Annotation> lraAnnotation) {
+        metadata.getAnnotatedMostConcreteJaxRsMethods(lraAnnotation).forEach(method ->
+                    method.getParameters().stream()
+                            .flatMap(p -> p.getAnnotations().stream())
+                            .filter(a -> a.annotationType().equals(Suspended.class)) // find if method parameter is annotated with @Suspended
+                            .findAny().ifPresent(sa -> FailureCatalog.INSTANCE.add(ErrorCode.MISSING_SUSPEND_ASYNC_CALLBACK,
+                                    ErrorDetailsPrinter.METHOD_WITH_LRA.apply(method, lraAnnotation)))
+        );
     }
 
-    private String getMissingAnnotationsForAsynchHandling(AnnotatedMethod<?> method, ProcessAnnotatedType<?> classAnnotated,
-            Class<?> completionAnnotation) {
-        return String.format("Method '%s' of class '%s' annotated with '%s' is defined being asynchronous via @Suspend parameter annotation. " +
-            "The LRA class has to contain @Status and @Forget annotations to activate such handling.",
-                method.getJavaMember().getName(), classAnnotated.getAnnotatedType().getJavaClass().getName(),
-                completionAnnotation.getName());
+    private static Predicate<AnnotatedMethod<?>> methodSignatureChecker(Class<?>... expectedParameterTypes) {
+        return method -> {
+            // when the method is not public
+            if (!Modifier.isPublic(method.getJavaMember().getModifiers())) {
+                return true;
+            }
+            Class<?>[] parameterTypes = method.getJavaMember().getParameterTypes();
+            // some number of parameters are considered but there is no parameter provided in method declaration then fail
+            if (expectedParameterTypes.length > 0 && method.getJavaMember().getParameterCount() == 0) {
+                return true;
+            }
+            // if number of declared parameters is bigger than the expected number of paramters
+            if (method.getJavaMember().getParameterCount() > expectedParameterTypes.length) {
+                return true;
+            }
+            // the number of declared method parameters do not need to match but those provided have to be of same type
+            for (int i = 0; i < method.getJavaMember().getParameterCount(); i++) {
+                if(!expectedParameterTypes[i].isAssignableFrom(parameterTypes[i])) return true; // one of the parameter types does not match
+            }
+            // return type is is one of Void, CompletionStage, ParticipantStatus or Response
+            if (!method.getJavaMember().getReturnType().equals(Void.TYPE)
+                    && !method.getJavaMember().getReturnType().equals(CompletionStage.class)
+                    && !method.getJavaMember().getReturnType().equals(ParticipantStatus.class)
+                    && !method.getJavaMember().getReturnType().equals(Response.class)) {
+                return true;
+            }
+            // all checks passed: the method is public with matching parameter types
+            return false;
+        };
     }
 }

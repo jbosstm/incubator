@@ -20,25 +20,27 @@
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
  */
 
-package io.narayana.lra.checker.bean;
+package io.narayana.lra.checker.bean.jaxrs;
 
 import org.eclipse.microprofile.lra.annotation.Compensate;
 import org.eclipse.microprofile.lra.annotation.Complete;
-import org.eclipse.microprofile.lra.annotation.Forget;
-import org.eclipse.microprofile.lra.annotation.ws.rs.LRA;
 import org.eclipse.microprofile.lra.annotation.Status;
+import org.eclipse.microprofile.lra.annotation.ws.rs.LRA;
+import org.eclipse.microprofile.lra.annotation.ws.rs.Leave;
 
-import javax.ws.rs.DELETE;
 import javax.ws.rs.GET;
 import javax.ws.rs.PUT;
 import javax.ws.rs.Path;
 
 /**
- * Having {@link Forget} LRA annotation with missing
- * {@link Path} and method type {@link DELETE}.
+ * {@link Leave} does not require any specific JAX-RS type.
  */
-@LRA
-public class ForgetWithoutDeleteBean {
+public class LeaveWithoutPutBean {
+    @LRA
+    public void process() {
+        // not implementation needed
+    }
+
     @Complete
     @Path("complete")
     @PUT
@@ -60,9 +62,9 @@ public class ForgetWithoutDeleteBean {
         // no implementation needed
     }
 
-    @Forget
-    @Path("forget")
-    public void forget() {
+    @Leave
+    @Path("leave")
+    public void leave() {
         // no implementation needed
     }
 }
