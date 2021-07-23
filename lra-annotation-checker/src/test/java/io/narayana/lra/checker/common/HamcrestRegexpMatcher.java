@@ -20,7 +20,7 @@
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
  */
 
-package io.narayana.lra.checker;
+package io.narayana.lra.checker.common;
 
 import java.util.Arrays;
 import java.util.regex.Pattern;
@@ -34,8 +34,6 @@ import org.hamcrest.Description;
  * Hamcrest checker which handles regular expressions.
  * <p>
  * Checking on {@link String} or if some record of {@link Iterable} matches the regular expression.
- *
- * @author Ondra Chaloupka <ochaloup@redhat.com>
  */
 public class HamcrestRegexpMatcher extends BaseMatcher<Object> {
     private final Pattern regexpPattern;

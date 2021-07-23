@@ -3,47 +3,75 @@
   <modelVersion>4.0.0</modelVersion>
 
   <groupId>io.narayana</groupId>
-  <artifactId>lra-annotation-checker-maven-plugin</artifactId>
-  <version>1.0.0.Alpha1-SNAPSHOT</version>
+  <artifactId>maven-plugin-lra-annotations_1.0</artifactId>
+  <version>1.0.0.Beta1-SNAPSHOT</version>
   <packaging>maven-plugin</packaging>
-  <name>Maven plugin LRA annotation checker</name>
-  <url>https://github.com/jbosstm/incubator</url>
-  <description>maven plugin to check consistency of lra annotations</description>
+  <name>Maven plugin Narayana LRA annotation checker</name>
+  <description>Maven plugin to check consistency of LRA annotations during build time</description>
+  <url>https://github.com/jbosstm/incubator/tree/master/lra-annotation-checker</url>
 
   <licenses>
-      <license>
-          <name>LGPL 2.1</name>
-          <url>http://www.gnu.org/licenses/lgpl-2.1.html</url>
-      </license>
+    <license>
+      <name>LGPL 2.1</name>
+      <url>http://www.gnu.org/licenses/lgpl-2.1.html</url>
+    </license>
   </licenses>
 
   <developers>
-      <developer>
-          <id>ochaloup</id>
-          <name>Ondra Chaloupka</name>
-          <email>ochaloup@redhat.com</email>
-          <organization>Red Hat</organization>
-          <organizationUrl>https://www.redhat.com</organizationUrl>
-      </developer>
+    <developer>
+      <id>ochaloup</id>
+      <name>Ondra Chaloupka</name>
+      <email>ochaloup@redhat.com</email>
+      <organization>Red Hat</organization>
+      <organizationUrl>https://www.redhat.com</organizationUrl>
+    </developer>
   </developers>
+  <scm>
+    <connection>scm:git:https://github.com/jbosstm/incubator.git</connection>
+    <developerConnection>scm:git:git@github.com:jbosstm/incubator.git</developerConnection>
+    <tag>HEAD</tag>
+    <url>https://github.com/jbosstm/incubator/tree/master/lra-annotation-checker</url>
+  </scm>
+
+  <!-- Release with mvn:release -->
+  <distributionManagement>
+    <repository>
+      <id>jboss-releases-repository</id>
+      <name>JBoss Release Repository</name>
+      <url>https://repository.jboss.org/nexus/service/local/staging/deploy/maven2/</url>
+    </repository>
+  </distributionManagement>
 
   <properties>
+    <checkstyle.skip>false</checkstyle.skip>
     <maven.compiler.source>1.8</maven.compiler.source>
     <maven.compiler.target>1.8</maven.compiler.target>
-
+    <sortpom.skip>false</sortpom.skip>
     <test.logs.to.file>true</test.logs.to.file>
-    <version.maven.plugin>3.5.2</version.maven.plugin>
-    <version.maven.plugin.annotations>3.5.1</version.maven.plugin.annotations>
 
-    <version.cdi-api>2.0</version.cdi-api>
+    <version.io.narayana.checkstyle-config>1.0.1.Final</version.io.narayana.checkstyle-config>
+    <version.jakarta.enterprise>4.0.0.Alpha1</version.jakarta.enterprise>
     <version.javax.ws.rs-api>2.0.1.Final</version.javax.ws.rs-api>
     <version.junit>4.13.2</version.junit>
+
+    <version.maven.checkstyle-plugin>3.1.2</version.maven.checkstyle-plugin>
+    <version.maven.plugin>3.8.1</version.maven.plugin>
+    <version.maven.plugin-annotations>3.6.1</version.maven.plugin-annotations>
+    <version.maven.plugin-plugin>3.6.1</version.maven.plugin-plugin>
     <version.microprofile.lra>1.0</version.microprofile.lra>
-    <version.org.jboss.weld>3.0.3.Final</version.org.jboss.weld>
+    <version.org.jboss.weld>4.0.1.Final</version.org.jboss.weld>
+    <version.shrinkwrap.resolver>3.1.4</version.shrinkwrap.resolver>
+    <version.sortpom>3.0.0</version.sortpom>
   </properties>
 
   <dependencies>
     <!-- Maven plugin dependencies -->
+    <dependency>
+      <groupId>org.apache.maven</groupId>
+      <artifactId>maven-core</artifactId>
+      <version>${version.maven.plugin}</version>
+      <scope>provided</scope>
+    </dependency>
     <dependency>
       <groupId>org.apache.maven</groupId>
       <artifactId>maven-plugin-api</artifactId>
@@ -53,17 +81,16 @@
     <dependency>
       <groupId>org.apache.maven.plugin-tools</groupId>
       <artifactId>maven-plugin-annotations</artifactId>
-      <version>${version.maven.plugin.annotations}</version>
-      <scope>provided</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.maven</groupId>
-      <artifactId>maven-core</artifactId>
-      <version>${version.maven.plugin}</version>
+      <version>${version.maven.plugin-annotations}</version>
       <scope>provided</scope>
     </dependency>
 
     <!-- Weld/CDI and Narayana LRA dependencies -->
+    <dependency>
+      <groupId>jakarta.enterprise</groupId>
+      <artifactId>jakarta.enterprise.cdi-api</artifactId>
+      <version>${version.jakarta.enterprise}</version>
+    </dependency>
     <dependency>
       <groupId>org.jboss.weld.se</groupId>
       <artifactId>weld-se-shaded</artifactId>
@@ -88,9 +115,15 @@
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>javax.enterprise</groupId>
-      <artifactId>cdi-api</artifactId>
-      <version>${version.cdi-api}</version>
+      <groupId>org.jboss.shrinkwrap.resolver</groupId>
+      <artifactId>shrinkwrap-resolver-depchain</artifactId>
+      <version>${version.shrinkwrap.resolver}</version>
+      <type>pom</type>
+    </dependency>
+    <dependency>
+      <groupId>org.eclipse.microprofile.lra</groupId>
+      <artifactId>microprofile-lra-tck</artifactId>
+      <version>${version.microprofile.lra}</version>
       <scope>test</scope>
     </dependency>
   </dependencies>
@@ -101,28 +134,64 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-plugin-plugin</artifactId>
-        <version>3.6.1</version>
+        <version>${version.maven.plugin-plugin}</version>
         <configuration>
           <mojoDependencies>
             <param>c.c.h:plugin</param>
           </mojoDependencies>
         </configuration>
       </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-checkstyle-plugin</artifactId>
+        <version>${version.maven.checkstyle-plugin}</version>
+        <configuration>
+          <configLocation>narayana-checkstyle/checkstyle.xml</configLocation>
+          <suppressionsLocation>narayana-checkstyle/suppressions.xml</suppressionsLocation>
+          <consoleOutput>true</consoleOutput>
+          <failsOnError>true</failsOnError>
+          <includeTestSourceDirectory>true</includeTestSourceDirectory>
+          <excludes>**/*$logger.java,**/*$bundle.java</excludes>
+          <useFile></useFile>
+          <!-- checkstyle is set to be run on particular modules by disabling skip -->
+          <skip>${checkstyle.skip}</skip>
+        </configuration>
+        <dependencies>
+          <dependency>
+            <groupId>io.narayana</groupId>
+            <artifactId>narayana-checkstyle-config</artifactId>
+            <version>${version.io.narayana.checkstyle-config}</version>
+          </dependency>
+        </dependencies>
+        <executions>
+          <execution>
+            <id>check-style</id>
+            <goals>
+              <goal>checkstyle</goal>
+            </goals>
+            <phase>compile</phase>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>com.github.ekryd.sortpom</groupId>
+        <artifactId>sortpom-maven-plugin</artifactId>
+        <version>${version.sortpom}</version>
+        <configuration>
+          <skip>${sortpom.skip}</skip>
+          <createBackupFile>false</createBackupFile>
+          <sortProperties>true</sortProperties>
+        </configuration>
+        <executions>
+          <execution>
+            <goals>
+              <goal>sort</goal>
+            </goals>
+            <phase>verify</phase>
+          </execution>
+        </executions>
+      </plugin>
     </plugins>
   </build>
-
-  <!-- Release with mvn:release -->
-  <distributionManagement>
-      <repository>
-          <id>jboss-releases-repository</id>
-          <name>JBoss Release Repository</name>
-          <url>https://repository.jboss.org/nexus/service/local/staging/deploy/maven2/</url>
-      </repository>
-  </distributionManagement>
-  <scm>
-      <connection>scm:git:https://github.com/jbosstm/narayana-checkstyle-config.git</connection>
-      <url>https://github.com/jbosstm/narayana-checkstyle-config</url>
-      <developerConnection>scm:git:git@github.com:jbosstm/narayana-checkstyle-config.git</developerConnection>
-      <tag>HEAD</tag>
-  </scm>
 </project>

@@ -24,45 +24,33 @@ package io.narayana.lra.checker.bean;
 
 import org.eclipse.microprofile.lra.annotation.Compensate;
 import org.eclipse.microprofile.lra.annotation.Complete;
-import org.eclipse.microprofile.lra.annotation.Forget;
 import org.eclipse.microprofile.lra.annotation.ws.rs.LRA;
 import org.eclipse.microprofile.lra.annotation.Status;
 
-import javax.ws.rs.DELETE;
-import javax.ws.rs.GET;
-import javax.ws.rs.PUT;
 import javax.ws.rs.Path;
 
 /**
- * Having {@link Forget} LRA annotation with missing
- * {@link Path} and method type {@link DELETE}.
+ * The LRA annotations do not contain HTTP methods
+ * which are compulsory when LRA annotations are used.
  */
 @LRA
-public class ForgetWithoutDeleteBean {
-    @Complete
-    @Path("complete")
-    @PUT
+public class NoPutOrGetBean {
+
+    @Path("/complete")
+    @Complete // @PUT expected
     public void complete() {
         // no implementation needed
     }
 
-    @Compensate
-    @Path("compensate")
-    @PUT
+    @Path("/compensate")
+    @Compensate // @PUT expected
     public void compensate() {
         // no implementation needed
     }
 
-    @Status
-    @Path("status")
-    @GET
+    @Path("/status")
+    @Status // @GET expected
     public void status() {
-        // no implementation needed
-    }
-
-    @Forget
-    @Path("forget")
-    public void forget() {
         // no implementation needed
     }
 }

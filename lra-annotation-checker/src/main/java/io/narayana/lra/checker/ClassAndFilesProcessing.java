@@ -30,8 +30,10 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
 import org.apache.maven.plugin.MojoFailureException;
@@ -40,17 +42,12 @@ import org.apache.maven.plugin.logging.Log;
 /**
  * Utility class used for loading classes to be then used
  * for creating synthetic bean archive for Weld
- *
- * @author Ondra Chaloupka <ochaloup@redhat.com>
  */
-public final class CheckerUtil {
-    private static Log log;
+final class ClassAndFilesProcessing {
+    private final Log mavenLog;
 
-    private CheckerUtil() {
-    }
-
-    public static void setMavenLog(Log log) {
-        CheckerUtil.log = log;
+    ClassAndFilesProcessing(Log mavenLog) {
+        this.mavenLog = mavenLog;
     }
 
     /**
@@ -59,8 +56,8 @@ public final class CheckerUtil {
      * @param file  file to check if it's zip
      * @return true if zip format, false otherwise
      */
-    public static boolean isZipFile(File file) {
-        try (ZipFile zf = new ZipFile(file)) {
+    static boolean isZipFile(File file) {
+        try (final ZipFile ignored = new ZipFile(file)) {
             return true;
         } catch (IOException e) {
             return false;
@@ -74,11 +71,11 @@ public final class CheckerUtil {
      * @param classLoader  class loader used for loading classes
      * @return  list of loaded classes
      */
-    public static List<Class<?>> loadFromJar(final File pathToJar, final ClassLoader classLoader) throws MojoFailureException {
+    List<Class<?>> loadFromJar(final File pathToJar, final ClassLoader classLoader) throws MojoFailureException {
         try (ZipFile zipFile = new ZipFile(pathToJar)) {
             Stream<String> stream = zipFile.stream()
                 .filter(zipEntry -> !zipEntry.isDirectory())
-                .map(zipEntry -> zipEntry.getName());
+                .map(ZipEntry::getName);
             return processStream(stream, classLoader, pathToJar);
         } catch (IOException ioe) {
             throw new MojoFailureException("Can't read from jar file '" + pathToJar + "'", ioe);
@@ -92,12 +89,12 @@ public final class CheckerUtil {
      * @param classLoader  class loader used for loading classes
      * @return  list of loaded classes
      */
-    public static List<Class<?>> loadFromDir(final File pathToDir, final ClassLoader classLoader) throws MojoFailureException {
+    List<Class<?>> loadFromDir(final File pathToDir, final ClassLoader classLoader) throws MojoFailureException {
         final Path pathToDirAsPath = Paths.get(pathToDir.getPath());
         try (Stream<Path> paths = Files.walk(pathToDirAsPath)) {
             Stream<String> stream = paths
-                .filter(path -> Files.isRegularFile(path))
-                .map(path -> pathToDirAsPath.relativize(path))
+                .filter(Files::isRegularFile)
+                .map(pathToDirAsPath::relativize)
                 .map(path -> path.toFile().getPath());
             return processStream(stream, classLoader, pathToDir);
         } catch (IOException ioe) {
@@ -105,28 +102,24 @@ public final class CheckerUtil {
         }
     }
 
-    private static List<Class<?>> processStream(Stream<? extends String> stream, ClassLoader classLoader, File streamedFile) {
+    private List<Class<?>> processStream(Stream<? extends String> stream, ClassLoader classLoader, File streamedFile) {
         return stream
             .filter(fileName -> fileName.endsWith(".class"))
-            .map(fileName -> fileName.replace((CharSequence) File.separator, "."))
+            .map(fileName -> fileName.replace(File.separator, "."))
             .map(fileName -> fileName.substring(0, fileName.length() - ".class".length()))
             .map(className -> loadClass(className, streamedFile, classLoader))
-            .filter(clazz -> clazz != null)
+            .filter(Objects::nonNull)
             .collect(Collectors.toList());
     }
 
-    private static Class<?> loadClass(String className, File fileLoadingFrom, ClassLoader classLoader) {
+    private Class<?> loadClass(String className, File fileLoadingFrom, ClassLoader classLoader) {
         try {
             return Class.forName(className, false, classLoader);
         } catch (ClassNotFoundException e) {
-            log.debug("Error on loading class by URLClassLoder from: "
+            mavenLog.debug("Error on loading class by URLClassLoader from: "
                 + Arrays.asList(((URLClassLoader) classLoader).getURLs()), e);
             String errMsg = "Can't load class '" + className + "' from '" + fileLoadingFrom.getPath() + "'";
-            if (log != null) {
-                log.error(errMsg);
-            } else {
-                System.err.println(errMsg);
-            }
+            mavenLog.error(errMsg);
             return null;
         }
     }

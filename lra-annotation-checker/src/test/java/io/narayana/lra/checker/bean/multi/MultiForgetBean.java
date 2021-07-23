@@ -20,45 +20,54 @@
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
  */
 
+package io.narayana.lra.checker.bean.multi;
 
-package io.narayana.lra.checker;
+import org.eclipse.microprofile.lra.annotation.Compensate;
+import org.eclipse.microprofile.lra.annotation.Complete;
+import org.eclipse.microprofile.lra.annotation.Forget;
+import org.eclipse.microprofile.lra.annotation.ws.rs.LRA;
+import org.eclipse.microprofile.lra.annotation.Status;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
+import javax.ws.rs.DELETE;
+import javax.ws.rs.GET;
+import javax.ws.rs.PUT;
+import javax.ws.rs.Path;
 
 /**
- * Singleton storing list of String representing found LRA definition failures.
- *
- * @author Ondra Chaloupka <ochaloup@redhat.com>
+ * Bean containing more {@link Forget} annotations.
  */
-public enum FailureCatalog {
-    INSTANCE;
-
-    private String END_LINE = String.format("%n");
-    private List<String> failureCatalog = Collections.synchronizedList(new ArrayList<>());
-
-    public void add(String failure) {
-        failureCatalog.add(failure);
+@LRA
+public class MultiForgetBean {
+    @Complete
+    @Path("complete")
+    @PUT
+    public void complete() {
+        // no implementation needed
     }
 
-    public boolean isEmpty() {
-        return failureCatalog.isEmpty();
+    @Compensate
+    @Path("compensate")
+    @PUT
+    public void compensate() {
+        // no implementation needed
     }
 
-    void clear() {
-        failureCatalog.clear();
+    @Status
+    @Path("status")
+    @GET
+    public void status() {
+        // no implementation needed
     }
 
-    public String formatCatalogContent() {
-        if (failureCatalog == null || failureCatalog.isEmpty()) {
-            return "";
-        }
-        StringBuffer buffer = new StringBuffer();
-        for (String failure: failureCatalog) {
-            buffer.append(" -> ").append(failure).append(END_LINE);
-        }
-        return buffer.toString();
+    @Forget
+    @DELETE
+    public void foget1() {
+        // no implementation needed
     }
 
+    @Forget
+    @DELETE
+    public void foget2() {
+        // no implementation needed
+    }
 }
