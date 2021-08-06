@@ -4,7 +4,7 @@
 
   <groupId>io.narayana</groupId>
   <artifactId>maven-plugin-lra-annotations_1.0</artifactId>
-  <version>1.0.0.Beta1-SNAPSHOT</version>
+  <version>1.0.0.Beta1</version>
   <packaging>maven-plugin</packaging>
   <name>Maven plugin Narayana LRA annotation checker</name>
   <description>Maven plugin to check consistency of LRA annotations during build time</description>
@@ -29,7 +29,7 @@
   <scm>
     <connection>scm:git:https://github.com/jbosstm/incubator.git</connection>
     <developerConnection>scm:git:git@github.com:jbosstm/incubator.git</developerConnection>
-    <tag>HEAD</tag>
+    <tag>lra-annotation-checker-1.0.0.Beta1</tag>
     <url>https://github.com/jbosstm/incubator/tree/master/lra-annotation-checker</url>
   </scm>
 
