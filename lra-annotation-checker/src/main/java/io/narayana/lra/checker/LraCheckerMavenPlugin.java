@@ -66,7 +66,7 @@ import io.narayana.lra.checker.cdi.LraAnnotationProcessingExtension;
  *     <plugin>
  *       <groupId>io.narayana</groupId>
  *       <artifactId>maven-plugin-lra-annotations_1.0</artifactId>
- *       <version>1.0.0</version>
+ *       <version>1.0.0.Beta1</version>
  *       <executions>
  *         <execution>
  *           <goals>
