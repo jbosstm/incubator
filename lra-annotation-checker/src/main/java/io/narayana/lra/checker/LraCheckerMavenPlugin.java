@@ -58,7 +58,6 @@ import io.narayana.lra.checker.cdi.LraAnnotationProcessingExtension;
  * and checks the LRA annotations if they're correct.
  * It uses CDI to verify the annotations.
  * <p>
- * <p>
  * Expected used by adding the snipped similar to this to your <code>pom.xml</code>
  * <pre>{@code
  * <build>

@@ -38,6 +38,10 @@ public enum FailureCatalog {
     /**
      * Adding a failure string under the list of failures represented by this catalog with a known error code.
      * The format of {@link String#format(String, Object...)} is expected.
+     *
+     * @param errorCode error code to add to catalog
+     * @param format string format to be added as detailed message, formatted with String.format on params
+     * @param params parameters for String.format formatting
      */
     public void add(ErrorCode errorCode, String format, Object... params) {
         failureCatalog.add(Failure.instance(errorCode, String.format(format, params)));
@@ -45,6 +49,9 @@ public enum FailureCatalog {
 
     /**
      * Adding a failure string under the list of failures represented by this catalog with a known error code.
+     *
+     * @param errorCode error code to add to catalog
+     * @param errorDetails error details to add to the code to catalog
      */
     public void add(ErrorCode errorCode, String errorDetails) {
         failureCatalog.add(Failure.instance(errorCode, errorDetails));
@@ -52,6 +59,8 @@ public enum FailureCatalog {
 
     /**
      * Informs if the catalog contains some failures.
+     *
+     * @return true if empty catalog, otherwise false
      */
     public boolean isEmpty() {
         return failureCatalog.isEmpty();
@@ -63,6 +72,8 @@ public enum FailureCatalog {
 
     /**
      * Printing the failures from catalog as a formatted string.
+     *
+     * @return formatted string with catalog content
      */
     public String formatCatalogContent() {
         return "[[" + failureCatalog.size() + "]]" +
