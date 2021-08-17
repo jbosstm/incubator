@@ -153,7 +153,7 @@
           <failsOnError>true</failsOnError>
           <includeTestSourceDirectory>true</includeTestSourceDirectory>
           <excludes>**/*$logger.java,**/*$bundle.java</excludes>
-          <useFile />
+          <useFile></useFile>
           <!-- checkstyle is set to be run on particular modules by disabling skip -->
           <skip>${checkstyle.skip}</skip>
         </configuration>

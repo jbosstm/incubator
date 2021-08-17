@@ -41,6 +41,7 @@ The plugin defines the goal `check`, by default it's run at phase `process-class
 |Defines the list of file system paths that will be scanned by plugin.
  The provided path (if exists) has to be pointing to a directory or to a jar file.
  The default value is path to `target/classes` (a.k.a. `${project.build.directory}`).
+ When multiple paths defined then they're delimited with a comma ({{,}}).
 |`failWhenPathNotExist`
 |Defines if plugin fails (throws exception) when some provided `paths` param
  does not exist. It's a boolean value `true` or `false`. The default value is `true`.

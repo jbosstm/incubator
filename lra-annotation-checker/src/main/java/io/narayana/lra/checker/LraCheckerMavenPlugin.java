@@ -80,7 +80,7 @@ import io.narayana.lra.checker.cdi.LraAnnotationProcessingExtension;
  * <p>
  * Parameters to configure
  * <ul>
- *   <li>{@code paths} - path searched for classes which will be checked on LRA annotations (use directory or jar)</li>
+ *   <li>{@code paths} - path searched for classes which will be checked on LRA annotations (use directory or jar), delimited with comma</li>
  *   <li>{@code failWhenPathNotExist} - define if fails when some of the {@code paths} param is non-existing path</li>
  * </ul>
  * <pre>{@code
