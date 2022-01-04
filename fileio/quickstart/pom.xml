@@ -8,7 +8,7 @@
 	<description>Demo of JBoss Transactional file I/O</description>
 	<url>http://www.jboss.org/jbosstm/fileio/</url>
 	<properties>
-		<version.log4j>2.17.0</version.log4j>
+		<version.log4j>2.17.1</version.log4j>
 	</properties>
 	<build>
 		<plugins>
