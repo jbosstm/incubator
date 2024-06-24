@@ -1,0 +1,3 @@
+[submodule "narayana"]
+	path = narayana
+	url = https://github.com/jbosstm/narayana
