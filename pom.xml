@@ -29,8 +29,7 @@
 
     <modules>
         <module>fileio</module>
-        <!-- Requires source/target update from 1.5 to 1.8+ to build on JDK 9+ -->
-        <!-- <module>fileio/quickstart</module> -->
+        <module>fileio/quickstart</module>
         <module>lra-annotation-checker</module>
     </modules>
 
