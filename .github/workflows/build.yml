@@ -21,7 +21,7 @@ jobs:
           cache: maven
 
       - name: Build and Test
-        run: mvn -B verify
+        run: mvn -B verify -X
 
       - name: Upload test reports
         if: failure()
